@@ -46,24 +46,20 @@ public class FileOperationsUtil : IFileOperationsUtil
     {
         string gitDirectory = _gitUtil.CloneToTempDirectory($"https://github.com/soenneker/{Constants.Library.ToLowerInvariantFast()}");
 
-        string targetFilePath = Path.Combine(gitDirectory, "spec3.json");
+        string targetFilePath = Path.Combine(gitDirectory, "openapi.json");
 
         _fileUtilSync.DeleteIfExists(targetFilePath);
 
-        string? filePath = await _fileDownloadUtil.Download("https://https://app.loops.so/openapi.json",
+        string? filePath = await _fileDownloadUtil.Download("https://app.loops.so/openapi.json",
             targetFilePath, fileExtension: ".json", cancellationToken: cancellationToken);
 
         await _processUtil.Start("dotnet", null, "tool update --global Microsoft.OpenApi.Kiota", waitForExit: true, cancellationToken: cancellationToken);
-
-        string fixedFilePath = Path.Combine(gitDirectory, "fixed.json");
-
-        await _openApiFixer.Fix(filePath, fixedFilePath, cancellationToken).NoSync();
 
         string srcDirectory = Path.Combine(gitDirectory, "src");
 
         DeleteAllExceptCsproj(srcDirectory);
 
-        await _processUtil.Start("kiota", gitDirectory, $"kiota generate -l CSharp -d \"{fixedFilePath}\" -o src -c LoopsOpenApiClient -n {Constants.Library}",
+        await _processUtil.Start("kiota", gitDirectory, $"kiota generate -l CSharp -d \"{filePath}\" -o src -c LoopsOpenApiClient -n {Constants.Library}",
             waitForExit: true, cancellationToken: cancellationToken).NoSync();
 
         await BuildAndPush(gitDirectory, cancellationToken).NoSync();
