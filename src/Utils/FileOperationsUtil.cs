@@ -54,7 +54,7 @@ public class FileOperationsUtil : IFileOperationsUtil
 
         DeleteAllExceptCsproj(srcDirectory);
 
-        await _processUtil.Start("kiota", gitDirectory, $"kiota generate -l CSharp -d \"{filePath}\" -o src -c LoopsOpenApiClient -n {Constants.Library}",
+        await _processUtil.Start("kiota", gitDirectory, $"kiota generate -l CSharp -d \"{filePath}\" -o src -c LoopsOpenApiClient -n {Constants.Library} --ebc --cc",
             waitForExit: true, cancellationToken: cancellationToken).NoSync();
 
         await BuildAndPush(gitDirectory, cancellationToken).NoSync();
