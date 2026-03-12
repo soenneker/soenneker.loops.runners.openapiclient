@@ -54,11 +54,11 @@ public class FileOperationsUtil : IFileOperationsUtil
 
         await _processUtil.Start("dotnet", null, "tool update --global Microsoft.OpenApi.Kiota", waitForExit: true, cancellationToken: cancellationToken);
 
-        string srcDirectory = Path.Combine(gitDirectory, "src");
+        string srcDirectory = Path.Combine(gitDirectory, "src", Constants.Library);
 
         await DeleteAllExceptCsproj(srcDirectory, cancellationToken).NoSync();
 
-        await _processUtil.Start("kiota", gitDirectory, $"kiota generate -l CSharp -d \"{filePath}\" -o src -c LoopsOpenApiClient -n {Constants.Library} --ebc --cc",
+        await _processUtil.Start("kiota", gitDirectory, $"kiota generate -l CSharp -d \"{filePath}\" -o src/{Constants.Library} -c LoopsOpenApiClient -n {Constants.Library} --ebc --cc",
             waitForExit: true, cancellationToken: cancellationToken).NoSync();
 
         await BuildAndPush(gitDirectory, cancellationToken).NoSync();
@@ -120,7 +120,7 @@ public class FileOperationsUtil : IFileOperationsUtil
 
     private async ValueTask BuildAndPush(string gitDirectory, CancellationToken cancellationToken)
     {
-        string projFilePath = Path.Combine(gitDirectory, "src", $"{Constants.Library}.csproj");
+        string projFilePath = Path.Combine(gitDirectory, "src", Constants.Library, $"{Constants.Library}.csproj");
 
         await _dotnetUtil.Restore(projFilePath, cancellationToken: cancellationToken);
 
