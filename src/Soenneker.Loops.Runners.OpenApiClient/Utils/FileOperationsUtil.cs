@@ -20,7 +20,7 @@ using System.Collections.Generic;
 
 namespace Soenneker.Loops.Runners.OpenApiClient.Utils;
 
-///<inheritdoc cref="IFileOperationsUtil"/>
+/// <inheritdoc cref="IFileOperationsUtil"/>
 public class FileOperationsUtil : IFileOperationsUtil
 {
     private readonly ILogger<FileOperationsUtil> _logger;
