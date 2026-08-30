@@ -4,7 +4,6 @@ using Soenneker.Git.Util.Abstract;
 using Soenneker.Loops.Runners.OpenApiClient.Utils.Abstract;
 using Soenneker.Utils.Dotnet.Abstract;
 using Soenneker.Utils.Environment;
-using Soenneker.Utils.Process.Abstract;
 using System;
 using System.IO;
 using System.Linq;
@@ -20,26 +19,23 @@ using System.Collections.Generic;
 
 namespace Soenneker.Loops.Runners.OpenApiClient.Utils;
 
-/// <inheritdoc cref="IFileOperationsUtil"/>
 public class FileOperationsUtil : IFileOperationsUtil
 {
     private readonly ILogger<FileOperationsUtil> _logger;
     private readonly IGitUtil _gitUtil;
     private readonly IDotnetUtil _dotnetUtil;
-    private readonly IProcessUtil _processUtil;
     private readonly IKiotaUtil _kiotaUtil;
     private readonly IOpenApiFixer _openApiFixer;
     private readonly IFileDownloadUtil _fileDownloadUtil;
     private readonly IFileUtil _fileUtil;
     private readonly IDirectoryUtil _directoryUtil;
 
-    public FileOperationsUtil(ILogger<FileOperationsUtil> logger, IGitUtil gitUtil, IDotnetUtil dotnetUtil, IProcessUtil processUtil,
+    public FileOperationsUtil(ILogger<FileOperationsUtil> logger, IGitUtil gitUtil, IDotnetUtil dotnetUtil,
         IFileDownloadUtil fileDownloadUtil, IFileUtil fileUtil, IDirectoryUtil directoryUtil, IKiotaUtil kiotaUtil, IOpenApiFixer openApiFixer)
     {
         _logger = logger;
         _gitUtil = gitUtil;
         _dotnetUtil = dotnetUtil;
-        _processUtil = processUtil;
         _kiotaUtil = kiotaUtil;
         _openApiFixer = openApiFixer;
         _fileDownloadUtil = fileDownloadUtil;
@@ -59,7 +55,12 @@ public class FileOperationsUtil : IFileOperationsUtil
 
         string? filePath = await _fileDownloadUtil.Download("https://app.loops.so/openapi.json",
             targetFilePath, fileExtension: ".json", cancellationToken: cancellationToken);
-        await _openApiFixer.Fix(targetFilePath, fixedFilePath, cancellationToken);
+
+        if (filePath is null)
+            throw new InvalidOperationException("Loops OpenAPI document download failed.");
+
+        await _fileUtil.DeleteIfExists(fixedFilePath, cancellationToken: cancellationToken);
+        await _openApiFixer.Fix(filePath, fixedFilePath, cancellationToken);
 
 
         await _kiotaUtil.EnsureInstalled(cancellationToken);
@@ -82,54 +83,28 @@ public class FileOperationsUtil : IFileOperationsUtil
     public async ValueTask DeleteAllExceptCsproj(string directoryPath, CancellationToken cancellationToken = default)
     {
         if (!(await _directoryUtil.Exists(directoryPath, cancellationToken)))
+            throw new InvalidOperationException($"Generated source directory does not exist: {directoryPath}");
+
+        List<string> files = await _directoryUtil.GetFilesByExtension(directoryPath, "", true, cancellationToken);
+        foreach (string file in files)
         {
-            _logger.LogWarning("Directory does not exist: {DirectoryPath}", directoryPath);
-            return;
+            if (file.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            await _fileUtil.Delete(file, ignoreMissing: true, log: false, cancellationToken).NoSync();
+            _logger.LogInformation("Deleted file: {FilePath}", file);
         }
 
-        try
+        List<string> dirs = await _directoryUtil.GetAllDirectoriesRecursively(directoryPath, cancellationToken);
+        foreach (string dir in dirs.OrderByDescending(static directory => directory.Length))
         {
-            // Delete all files except .csproj
-            List<string> files = await _directoryUtil.GetFilesByExtension(directoryPath, "", true, cancellationToken);
-            foreach (string file in files)
+            List<string> dirFiles = await _directoryUtil.GetFilesByExtension(dir, "", false, cancellationToken);
+            List<string> subDirs = await _directoryUtil.GetAllDirectories(dir, cancellationToken);
+            if (dirFiles.Count == 0 && subDirs.Count == 0)
             {
-                if (!file.EndsWith(".csproj", StringComparison.OrdinalIgnoreCase))
-                {
-                    try
-                    {
-                        await _fileUtil.Delete(file, ignoreMissing: true, log: true, cancellationToken).NoSync();
-                        _logger.LogInformation("Deleted file: {FilePath}", file);
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Failed to delete file: {FilePath}", file);
-                    }
-                }
+                await _directoryUtil.Delete(dir, cancellationToken);
+                _logger.LogInformation("Deleted empty directory: {DirectoryPath}", dir);
             }
-
-            // Delete all empty subdirectories
-            List<string> dirs = await _directoryUtil.GetAllDirectoriesRecursively(directoryPath, cancellationToken);
-            foreach (string dir in dirs.OrderByDescending(d => d.Length)) // Sort by depth to delete from deepest first
-            {
-                try
-                {
-                    List<string> dirFiles = await _directoryUtil.GetFilesByExtension(dir, "", false, cancellationToken);
-                    List<string> subDirs = await _directoryUtil.GetAllDirectories(dir, cancellationToken);
-                    if (dirFiles.Count == 0 && subDirs.Count == 0)
-                    {
-                        await _directoryUtil.Delete(dir, cancellationToken);
-                        _logger.LogInformation("Deleted empty directory: {DirectoryPath}", dir);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to delete directory: {DirectoryPath}", dir);
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "An error occurred while cleaning the directory: {DirectoryPath}", directoryPath);
         }
     }
 
@@ -142,10 +117,7 @@ public class FileOperationsUtil : IFileOperationsUtil
         bool successful = await _dotnetUtil.Build(projFilePath, true, "Release", false, cancellationToken: cancellationToken);
 
         if (!successful)
-        {
-            _logger.LogError("Build was not successful, exiting...");
-            return;
-        }
+            throw new InvalidOperationException("Generated Loops client failed its Release build.");
 
         string gitHubToken = EnvironmentUtil.GetVariableStrict("GH__TOKEN");
         string name = EnvironmentUtil.GetVariableStrict("GIT__NAME");
