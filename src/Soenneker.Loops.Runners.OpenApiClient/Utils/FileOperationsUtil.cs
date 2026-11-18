@@ -94,7 +94,8 @@ public class FileOperationsUtil : IFileOperationsUtil
                 continue;
 
             await _fileUtil.Delete(file, ignoreMissing: true, log: false, cancellationToken).NoSync();
-            _logger.LogInformation("Deleted file: {FilePath}", file);
+            if (_logger.IsEnabled(LogLevel.Information))
+                _logger.LogInformation("Deleted file: {FilePath}", file);
         }
 
         List<string> dirs = await _directoryUtil.GetAllDirectoriesRecursively(directoryPath, cancellationToken);
@@ -107,7 +108,8 @@ public class FileOperationsUtil : IFileOperationsUtil
             if (dirFiles.Count == 0 && subDirs.Count == 0)
             {
                 await _directoryUtil.Delete(dir, cancellationToken);
-                _logger.LogInformation("Deleted empty directory: {DirectoryPath}", dir);
+                if (_logger.IsEnabled(LogLevel.Information))
+                    _logger.LogInformation("Deleted empty directory: {DirectoryPath}", dir);
             }
         }
     }
